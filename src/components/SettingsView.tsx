@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react'
-import { Download, HardDrive, Monitor, Moon, Palette, Sun, Trash2, Upload } from 'lucide-react'
+import { Cloud, Download, HardDrive, LogIn, LogOut, Monitor, Moon, Palette, RefreshCw, Sun, Trash2, Upload } from 'lucide-react'
 import { actions, today, useData, type Theme } from '../lib/store'
+import { logout, setLocalOnly, syncNow, useSync } from '../lib/sync'
 import { Button, Card, SectionTitle } from './ui'
+import SyncBadge from './SyncBadge'
+
+const fmtTime = new Intl.DateTimeFormat('es-MX', { hour: 'numeric', minute: '2-digit' })
 
 const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
   { id: 'system', label: 'Sistema', icon: Monitor },
@@ -11,6 +15,7 @@ const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
 
 export default function SettingsView() {
   const data = useData()
+  const sync = useSync()
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -40,6 +45,42 @@ export default function SettingsView() {
       <h1 className="font-display text-3xl font-medium tracking-tight md:text-4xl">Ajustes</h1>
 
       <Card>
+        <SectionTitle icon={<Cloud size={16} />} aside={<SyncBadge />}>
+          Sincronización
+        </SectionTitle>
+        {sync.token ? (
+          <>
+            <p className="text-sm leading-relaxed text-muted">
+              Tu progreso se guarda en la nube y se actualiza en todos tus dispositivos.
+              {sync.lastSync && <> Última sincronización: {fmtTime.format(sync.lastSync)}.</>}
+            </p>
+            {sync.error && <p className="mt-2 text-sm text-accent">{sync.error}</p>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="outline" onClick={syncNow}>
+                <RefreshCw size={16} /> Sincronizar ahora
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => confirm('¿Cerrar sesión en este dispositivo? Tu progreso sigue guardado en la nube.') && logout()}
+              >
+                <LogOut size={16} /> Cerrar sesión
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm leading-relaxed text-muted">
+              Estás usando la app sin cuenta: el progreso solo vive en este navegador. Entra con tu contraseña para
+              guardarlo en la nube.
+            </p>
+            <Button variant="solid" className="mt-4" onClick={() => setLocalOnly(false)}>
+              <LogIn size={16} /> Iniciar sesión
+            </Button>
+          </>
+        )}
+      </Card>
+
+      <Card>
         <SectionTitle icon={<Palette size={16} />}>Apariencia</SectionTitle>
         <div className="grid grid-cols-3 gap-2">
           {THEMES.map(({ id, label, icon: Icon }) => (
@@ -60,8 +101,7 @@ export default function SettingsView() {
       <Card>
         <SectionTitle icon={<HardDrive size={16} />}>Tus datos</SectionTitle>
         <p className="text-sm leading-relaxed text-muted">
-          Tu progreso se guarda en este navegador. Descarga un respaldo de vez en cuando, o úsalo para pasar tu progreso a
-          otro dispositivo.
+          Descarga un respaldo de tu progreso en un archivo JSON, por si acaso. También puedes importarlo para restaurarlo.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="outline" onClick={download}>

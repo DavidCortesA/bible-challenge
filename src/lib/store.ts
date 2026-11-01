@@ -6,6 +6,8 @@ export type Theme = 'system' | 'light' | 'dark'
 
 export interface AppData {
   version: 1
+  /** Last local edit (ms); the newer copy wins when syncing */
+  updatedAt: number
   /** "GEN:1" -> local date (YYYY-MM-DD) the chapter was marked as read */
   chapters: Record<string, string>
   /** year -> plan reading key ("week-index") -> local date it was completed */
@@ -21,6 +23,7 @@ const STORAGE_KEY = 'bible-challenge:v1'
 
 const EMPTY: AppData = {
   version: 1,
+  updatedAt: 0,
   chapters: {},
   plans: {},
   settings: { syncPlanToBible: false, theme: 'system' },
@@ -38,6 +41,7 @@ function normalize(raw: unknown): AppData {
   const data = (raw ?? {}) as Partial<AppData>
   return {
     version: 1,
+    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
     chapters: data.chapters && typeof data.chapters === 'object' ? data.chapters : {},
     plans: data.plans && typeof data.plans === 'object' ? data.plans : {},
     settings: { ...EMPTY.settings, ...(data.settings ?? {}) },
@@ -56,8 +60,8 @@ function load(): AppData {
 let state: AppData = load()
 const listeners = new Set<() => void>()
 
-function setState(next: AppData) {
-  state = next
+function setState(next: AppData, touch = true) {
+  state = touch ? { ...next, updatedAt: Date.now() } : next
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
@@ -66,7 +70,9 @@ function setState(next: AppData) {
   listeners.forEach((l) => l())
 }
 
-function subscribe(listener: () => void) {
+export const getState = () => state
+
+export function subscribe(listener: () => void) {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
@@ -156,5 +162,10 @@ export const actions = {
 
   importJson(text: string) {
     setState(normalize(JSON.parse(text)))
+  },
+
+  /** Replace everything with a copy from the server, keeping its timestamp */
+  replaceFromServer(data: unknown) {
+    setState(normalize(data), false)
   },
 }

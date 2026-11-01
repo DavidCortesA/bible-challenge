@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, CalendarDays, LayoutDashboard, Settings, type LucideIcon } from 'lucide-react'
 import { useData } from './lib/store'
+import { useSync } from './lib/sync'
 import Dashboard from './components/Dashboard'
 import BibleView from './components/BibleView'
 import PlanView from './components/PlanView'
 import SettingsView from './components/SettingsView'
+import Login from './components/Login'
+import SyncBadge from './components/SyncBadge'
 
 export type Route = 'inicio' | 'biblia' | 'plan' | 'ajustes'
 
@@ -40,6 +43,7 @@ function useTheme() {
 
 export default function App() {
   const [route, setRoute] = useState<Route>(readRoute)
+  const { token, localOnly } = useSync()
   useTheme()
 
   useEffect(() => {
@@ -50,6 +54,8 @@ export default function App() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  if (!token && !localOnly) return <Login />
 
   return (
     <div className="min-h-dvh md:flex">
@@ -70,7 +76,10 @@ export default function App() {
             </a>
           ))}
         </nav>
-        <p className="mt-auto px-3 text-xs leading-relaxed text-faint">
+        <div className="mt-auto mb-4 px-1">
+          <SyncBadge />
+        </div>
+        <p className="px-3 text-xs leading-relaxed text-faint">
           “Lámpara es a mis pies tu palabra, y lumbrera a mi camino.”
           <br />
           <span className="text-muted">Salmos 119:105</span>
@@ -80,6 +89,7 @@ export default function App() {
       <div className="min-w-0 flex-1">
         <header className="flex items-center justify-between px-4 pt-5 md:hidden">
           <Brand />
+          <SyncBadge />
         </header>
         <main className="mx-auto w-full max-w-5xl px-4 pt-6 pb-28 md:px-10 md:pt-10 md:pb-16">
           {route === 'inicio' && <Dashboard />}
