@@ -1,28 +1,36 @@
 // Shared helpers for the API functions (files starting with "_" are not routes on Vercel)
+import { get, put } from '@vercel/blob'
 
-export const PROGRESS_KEY = 'bible-challenge:progress'
+const PROGRESS_PATH = 'bible-challenge/progress.json'
 
-const redisUrl = () => process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
-const redisToken = () => process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
+// `npm run dev` without a Blob token keeps the data in memory (see dev/api-plugin.ts)
+const useMemory = () => process.env.DEV_MEMORY_STORE === '1' && !process.env.BLOB_READ_WRITE_TOKEN
+const memory = globalThis as { __progress?: string }
 
 export function configError() {
   if (!process.env.APP_PASSWORD) return 'Falta la variable APP_PASSWORD en Vercel.'
-  if (!redisUrl() || !redisToken()) return 'Falta conectar Upstash Redis al proyecto en Vercel.'
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !useMemory()) return 'Falta conectar Vercel Blob al proyecto.'
   return null
 }
 
-/** Run Redis commands through Upstash's REST pipeline endpoint */
-export async function redis(...commands: (string | number)[][]): Promise<unknown[]> {
-  const res = await fetch(`${redisUrl()}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${redisToken()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-  })
-  if (!res.ok) throw new Error(`Redis ${res.status}`)
-  const out = (await res.json()) as { result?: unknown; error?: string }[]
-  return out.map((r) => {
-    if (r.error) throw new Error(r.error)
-    return r.result
+export async function loadProgress(): Promise<unknown> {
+  if (useMemory()) return memory.__progress ? JSON.parse(memory.__progress) : null
+  const result = await get(PROGRESS_PATH, { access: 'private', useCache: false })
+  if (!result) return null
+  return JSON.parse(await new Response(result.stream).text())
+}
+
+export async function saveProgress(data: unknown) {
+  const body = JSON.stringify(data)
+  if (useMemory()) {
+    memory.__progress = body
+    return
+  }
+  await put(PROGRESS_PATH, body, {
+    access: 'private',
+    contentType: 'application/json',
+    addRandomSuffix: false,
+    allowOverwrite: true,
   })
 }
 
