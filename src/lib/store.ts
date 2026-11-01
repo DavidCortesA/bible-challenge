@@ -1,19 +1,26 @@
 import { useSyncExternalStore } from 'react'
-import { BOOK_BY_ID } from '../data/books'
+import { BOOK_BY_ID, type Testament } from '../data/books'
 import type { Reading } from '../data/plan'
 
 export type Theme = 'system' | 'light' | 'dark'
 
+export interface Goal {
+  scope: 'all' | Testament
+  /** Day the goal was set, and how many chapters of the scope were read by then */
+  start: string
+  startRead: number
+  deadline: string
+}
+
 export interface AppData {
   version: 1
-  /** Last local edit (ms); the newer copy wins when syncing */
-  updatedAt: number
   /** "GEN:1" -> local date (YYYY-MM-DD) the chapter was marked as read */
   chapters: Record<string, string>
-  /** year -> plan reading key ("week-index") -> local date it was completed */
+  /** year -> plan day key ("d{week}-{day}") -> local date it was completed */
   plans: Record<string, Record<string, string>>
+  goal: Goal | null
   settings: {
-    /** When a plan reading is checked, also mark its chapters in the Bible tracker */
+    /** When a plan day is checked, also mark its chapters in the Bible tracker */
     syncPlanToBible: boolean
     theme: Theme
   }
@@ -23,9 +30,9 @@ const STORAGE_KEY = 'bible-challenge:v1'
 
 const EMPTY: AppData = {
   version: 1,
-  updatedAt: 0,
   chapters: {},
   plans: {},
+  goal: null,
   settings: { syncPlanToBible: false, theme: 'system' },
 }
 
@@ -41,9 +48,9 @@ function normalize(raw: unknown): AppData {
   const data = (raw ?? {}) as Partial<AppData>
   return {
     version: 1,
-    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
     chapters: data.chapters && typeof data.chapters === 'object' ? data.chapters : {},
     plans: data.plans && typeof data.plans === 'object' ? data.plans : {},
+    goal: data.goal && typeof data.goal === 'object' ? data.goal : null,
     settings: { ...EMPTY.settings, ...(data.settings ?? {}) },
   }
 }
@@ -60,8 +67,8 @@ function load(): AppData {
 let state: AppData = load()
 const listeners = new Set<() => void>()
 
-function setState(next: AppData, touch = true) {
-  state = touch ? { ...next, updatedAt: Date.now() } : next
+function setState(next: AppData) {
+  state = next
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
@@ -70,9 +77,7 @@ function setState(next: AppData, touch = true) {
   listeners.forEach((l) => l())
 }
 
-export const getState = () => state
-
-export function subscribe(listener: () => void) {
+function subscribe(listener: () => void) {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
@@ -117,29 +122,26 @@ export const actions = {
     actions.setChapters(bookId, 1, BOOK_BY_ID[bookId].chapters, read)
   },
 
-  togglePlanReading(year: number, key: string, reading: Reading) {
+  /** Mark plan days done (or not); with sync on, done days also mark their chapters */
+  setPlanDays(year: number, days: { key: string; readings: Reading[] }[], done: boolean) {
     const plan = { ...(state.plans[year] ?? {}) }
-    const done = !(key in plan)
-    if (done) plan[key] = today()
-    else delete plan[key]
-
+    const date = today()
     let chapters = state.chapters
-    if (done && state.settings.syncPlanToBible) {
-      chapters = withChapters(chapters, reading.book, reading.from, reading.to, true)
+    for (const d of days) {
+      if (done) {
+        plan[d.key] ??= date
+        if (state.settings.syncPlanToBible) {
+          d.readings.forEach((r) => (chapters = withChapters(chapters, r.book, r.from, r.to, true)))
+        }
+      } else {
+        delete plan[d.key]
+      }
     }
     setState({ ...state, chapters, plans: { ...state.plans, [year]: plan } })
   },
 
-  setPlanReadings(year: number, keys: string[], done: boolean, readings: Reading[]) {
-    const plan = { ...(state.plans[year] ?? {}) }
-    const date = today()
-    keys.forEach((k) => (done ? (plan[k] ??= date) : delete plan[k]))
-
-    let chapters = state.chapters
-    if (done && state.settings.syncPlanToBible) {
-      readings.forEach((r) => (chapters = withChapters(chapters, r.book, r.from, r.to, true)))
-    }
-    setState({ ...state, chapters, plans: { ...state.plans, [year]: plan } })
+  togglePlanDay(year: number, key: string, readings: Reading[]) {
+    actions.setPlanDays(year, [{ key, readings }], !(key in (state.plans[year] ?? {})))
   },
 
   resetPlanYear(year: number) {
@@ -152,6 +154,10 @@ export const actions = {
     setState({ ...state, chapters: {} })
   },
 
+  setGoal(goal: Goal | null) {
+    setState({ ...state, goal })
+  },
+
   updateSettings(patch: Partial<AppData['settings']>) {
     setState({ ...state, settings: { ...state.settings, ...patch } })
   },
@@ -162,10 +168,5 @@ export const actions = {
 
   importJson(text: string) {
     setState(normalize(JSON.parse(text)))
-  },
-
-  /** Replace everything with a copy from the server, keeping its timestamp */
-  replaceFromServer(data: unknown) {
-    setState(normalize(data), false)
   },
 }

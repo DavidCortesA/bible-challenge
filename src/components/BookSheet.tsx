@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCheck, ChevronLeft, ChevronRight, ExternalLink, MoveHorizontal, RotateCcw, X } from 'lucide-react'
-import { BOOKS, BOOK_BY_ID, readUrl } from '../data/books'
+import { BOOKS, BOOK_BY_ID } from '../data/books'
+import { openReading } from '../lib/pending'
 import { actions, chapterKey, useData } from '../lib/store'
 import { pct, readInBook } from '../lib/stats'
 import { Button, Pct, ProgressBar } from './ui'
@@ -144,14 +145,15 @@ export default function BookSheet({ bookId, onClose }: { bookId: string; onClose
               <RotateCcw size={16} /> Limpiar
             </Button>
           )}
-          <a
-            href={readUrl(book.id, firstUnread(data.chapters, book.id, book.chapters))}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted hover:bg-sunken hover:text-ink"
+          <Button
+            className="ml-auto"
+            onClick={() => {
+              const chapter = firstUnread(data.chapters, book.id, book.chapters)
+              openReading({ kind: 'chapter', label: `${book.name} ${chapter}`, book: book.id, chapter })
+            }}
           >
             <ExternalLink size={16} /> Leer
-          </a>
+          </Button>
         </div>
       </div>
     </div>

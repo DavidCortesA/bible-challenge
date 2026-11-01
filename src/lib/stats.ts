@@ -1,6 +1,6 @@
 import { BOOKS, CATEGORIES, TOTAL_CHAPTERS, type Book, type Category, type Testament } from '../data/books'
-import { PLAN, currentWeek, readingKey, TOTAL_PLAN_READINGS } from '../data/plan'
-import { chapterKey, type AppData } from './store'
+import { PLAN, currentWeek, dayKey, dayOfYear, weekDays, yearDays } from '../data/plan'
+import { chapterKey, type AppData, type Goal } from './store'
 
 export const pct = (n: number, total: number) => (total === 0 ? 0 : (n / total) * 100)
 
@@ -44,24 +44,107 @@ export function bibleStats(data: AppData) {
 
 export function planStats(data: AppData, year: number) {
   const done = data.plans[year] ?? {}
-  let readingsDone = 0
-  let weeksDone = 0
-  for (const w of PLAN) {
-    const n = w.readings.filter((_, i) => readingKey(w.week, i) in done).length
-    readingsDone += n
-    if (n === w.readings.length) weeksDone++
-  }
-  const week = currentWeek(year)
-  // Weeks fully elapsed before the current one should be done to be "on track"
-  const expectedWeeks = Math.max(0, Math.min(52, week - 1))
-  const expectedReadings = PLAN.slice(0, expectedWeeks).reduce((s, w) => s + w.readings.length, 0)
+  const days = yearDays(year)
+  const now = new Date()
+  // Days before today should be done to be "on track"
+  const expected = year < now.getFullYear() ? days.length : year > now.getFullYear() ? 0 : dayOfYear(now)
+
+  let daysDone = 0
+  let doneBefore = 0
+  days.forEach((d, i) => {
+    if (dayKey(d.week, d.day) in done) {
+      daysDone++
+      if (i < expected) doneBefore++
+    }
+  })
+  const weeksDone = PLAN.filter((w) => weekDays(year, w.week).every((d) => dayKey(d.week, d.day) in done)).length
+
   return {
-    readingsDone,
-    totalReadings: TOTAL_PLAN_READINGS,
+    daysDone,
+    totalDays: days.length,
     weeksDone,
-    week,
-    behind: Math.max(0, expectedReadings - readingsDone),
+    week: currentWeek(year),
+    behind: expected - doneBefore,
   }
+}
+
+const DAY_MS = 86_400_000
+const parseDate = (s: string) => new Date(s + 'T12:00')
+const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS)
+
+export function goalStats(goal: Goal, stats: ReturnType<typeof bibleStats>) {
+  const { read, total } = goal.scope === 'all' ? stats : stats.byTestament[goal.scope]
+  const now = parseDate(dateKey(new Date()))
+  const start = parseDate(goal.start)
+  const deadline = parseDate(goal.deadline)
+  const remaining = total - read
+  const daysLeft = Math.max(1, daysBetween(now, deadline) + 1)
+  const span = Math.max(1, daysBetween(start, deadline) + 1)
+  const elapsed = Math.min(span, Math.max(0, daysBetween(start, now)))
+  const expected = goal.startRead + ((total - goal.startRead) * elapsed) / span
+  return {
+    read,
+    total,
+    remaining,
+    daysLeft,
+    overdue: daysBetween(now, deadline) < 0,
+    perDay: Math.ceil(remaining / daysLeft),
+    ahead: Math.round(read - expected),
+  }
+}
+
+/** Chapters, active days and finished books for one calendar year */
+export function yearStats(data: AppData, year: number) {
+  const prefix = `${year}-`
+  const byMonth = Array.from({ length: 12 }, () => 0)
+  let chapters = 0
+  for (const date of Object.values(data.chapters)) {
+    if (date.startsWith(prefix)) {
+      chapters++
+      byMonth[Number(date.slice(5, 7)) - 1]++
+    }
+  }
+
+  const active = new Set([...activityByDay(data).keys()].filter((d) => d.startsWith(prefix)))
+  let bestStreak = 0
+  for (const d of active) {
+    const prev = parseDate(d)
+    prev.setDate(prev.getDate() - 1)
+    if (active.has(dateKey(prev))) continue // not the start of a run
+    let n = 0
+    const cur = parseDate(d)
+    while (active.has(dateKey(cur))) {
+      n++
+      cur.setDate(cur.getDate() + 1)
+    }
+    bestStreak = Math.max(bestStreak, n)
+  }
+
+  const booksFinished: { book: Book; date: string }[] = []
+  for (const book of BOOKS) {
+    let last = ''
+    let complete = true
+    for (let c = 1; c <= book.chapters && complete; c++) {
+      const d = data.chapters[chapterKey(book.id, c)]
+      if (!d) complete = false
+      else if (d > last) last = d
+    }
+    if (complete && last.startsWith(prefix)) booksFinished.push({ book, date: last })
+  }
+  booksFinished.sort((a, b) => a.date.localeCompare(b.date))
+
+  return { chapters, byMonth, activeDays: active.size, bestStreak, booksFinished }
+}
+
+/** Years that have any activity, newest first, with chapters read in each */
+export function activeYears(data: AppData) {
+  const years = new Map<number, number>()
+  for (const d of activityByDay(data).keys()) years.set(Number(d.slice(0, 4)), 0)
+  for (const d of Object.values(data.chapters)) {
+    const y = Number(d.slice(0, 4))
+    years.set(y, (years.get(y) ?? 0) + 1)
+  }
+  return [...years.entries()].sort((a, b) => b[0] - a[0])
 }
 
 /** Every day with any activity (chapters or plan readings), with a count */

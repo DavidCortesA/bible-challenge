@@ -1,21 +1,21 @@
 import { useMemo } from 'react'
 import { ArrowRight, BookCheck, CalendarDays, Check, ExternalLink, Flame, Layers, Library, Sparkles } from 'lucide-react'
-import { BOOKS, CATEGORIES, readUrl } from '../data/books'
-import { PLAN, readingKey, readingLabel, weekRange } from '../data/plan'
+import { BOOKS, CATEGORIES } from '../data/books'
+import { dayKey, planDayFor, readingsChapters, readingsLabel, weekDays } from '../data/plan'
 import { actions, useData } from '../lib/store'
 import { activityByDay, bibleStats, dateKey, nextChapter, pct, planStats, streak } from '../lib/stats'
+import { openReading } from '../lib/pending'
 import { Button, Card, Pct, ProgressBar, ProgressRing, SectionTitle, Stat } from './ui'
+import GoalCard from './GoalCard'
 
 const fmtDay = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
-const fmtShort = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' })
+const fmtWeekday = new Intl.DateTimeFormat('es-MX', { weekday: 'narrow' })
 
 export default function Dashboard() {
   const data = useData()
   const stats = useMemo(() => bibleStats(data), [data])
   const days = useMemo(() => activityByDay(data), [data])
   const next = useMemo(() => nextChapter(data), [data])
-  const year = new Date().getFullYear()
-  const plan = planStats(data, year)
   const overall = pct(stats.read, stats.total)
 
   return (
@@ -25,7 +25,45 @@ export default function Dashboard() {
         <h1 className="mt-1 font-display text-3xl font-medium tracking-tight md:text-4xl">Tu progreso</h1>
       </header>
 
-      <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <TodayCard />
+
+        <Card className="flex flex-col">
+          <SectionTitle icon={<Sparkles size={16} />}>Siguiente capítulo</SectionTitle>
+          {next ? (
+            <>
+              <p className="font-display text-2xl font-medium tracking-tight">
+                {next.book.name} {next.chapter}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {stats.byBook.get(next.book.id)} de {next.book.chapters} capítulos leídos en este libro
+              </p>
+              <div className="mt-auto flex flex-wrap gap-2 pt-5">
+                <Button variant="outline" onClick={() => actions.toggleChapter(next.book.id, next.chapter)}>
+                  <Check size={16} /> Marcar leído
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    openReading({
+                      kind: 'chapter',
+                      label: `${next.book.name} ${next.chapter}`,
+                      book: next.book.id,
+                      chapter: next.chapter,
+                    })
+                  }
+                >
+                  <ExternalLink size={16} /> Leer
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="font-display text-xl">¡Terminaste toda la Biblia! 🎉</p>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Card className="flex flex-col gap-6 sm:flex-row sm:items-center">
           <ProgressRing value={overall} size={148} className="mx-auto sm:mx-0">
             <span className="num text-3xl font-medium tracking-tight">
@@ -67,39 +105,10 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        <Card className="flex flex-col">
-          <SectionTitle icon={<Sparkles size={16} />}>Siguiente lectura</SectionTitle>
-          {next ? (
-            <>
-              <p className="font-display text-2xl font-medium tracking-tight">
-                {next.book.name} {next.chapter}
-              </p>
-              <p className="mt-1 text-sm text-muted">
-                {stats.byBook.get(next.book.id)} de {next.book.chapters} capítulos leídos en este libro
-              </p>
-              <div className="mt-auto flex flex-wrap gap-2 pt-5">
-                <Button variant="solid" onClick={() => actions.toggleChapter(next.book.id, next.chapter)}>
-                  <Check size={16} /> Marcar leído
-                </Button>
-                <a
-                  href={readUrl(next.book.id, next.chapter)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium hover:bg-sunken"
-                >
-                  <ExternalLink size={16} /> Leer
-                </a>
-              </div>
-            </>
-          ) : (
-            <p className="font-display text-xl">¡Terminaste toda la Biblia! 🎉</p>
-          )}
-        </Card>
+        <GoalCard stats={stats} />
       </div>
 
-      <PlanThisWeek year={year} plan={plan} />
-
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <SectionTitle icon={<Layers size={16} />}>Por sección</SectionTitle>
           <div className="flex flex-col gap-3.5">
@@ -147,67 +156,75 @@ export default function Dashboard() {
   )
 }
 
-function PlanThisWeek({ year, plan }: { year: number; plan: ReturnType<typeof planStats> }) {
+function TodayCard() {
   const data = useData()
+  const now = new Date()
+  const year = now.getFullYear()
+  const today = planDayFor(now)
   const done = data.plans[year] ?? {}
-  const week = PLAN[Math.min(51, Math.max(0, plan.week - 1))]
-  const { start, end } = weekRange(year, week.week)
+  const key = dayKey(today.week, today.day)
+  const checked = key in done
+  const plan = planStats(data, year)
+  const label = readingsLabel(today.readings)
+  const todayKey = dateKey(now)
 
   return (
-    <Card>
+    <Card className="flex flex-col">
       <SectionTitle
         icon={<CalendarDays size={16} />}
         aside={
           <a href="#plan" className="flex items-center gap-1 text-xs text-muted hover:text-ink">
-            Plan {year} <ArrowRight size={14} />
+            Semana {today.week} <ArrowRight size={14} />
           </a>
         }
       >
-        Plan de 52 semanas
+        Hoy toca
       </SectionTitle>
-      <div className="grid gap-6 md:grid-cols-[1fr_1.3fr]">
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Stat label="Semanas completas" value={plan.weeksDone} sub="de 52" />
-            <Stat label="Lecturas" value={plan.readingsDone} sub={`de ${plan.totalReadings}`} />
-          </div>
-          <ProgressBar value={pct(plan.readingsDone, plan.totalReadings)} />
-          <p className="text-xs text-muted">
-            {plan.behind > 0 ? (
-              <>
-                Vas <span className="num text-ink">{plan.behind}</span> lecturas atrás del calendario — sin presión.
-              </>
-            ) : (
-              'Vas al día con el calendario.'
-            )}
-          </p>
-        </div>
-        <div className="rounded-xl bg-sunken/60 p-4">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-medium tracking-wide text-accent uppercase">Semana {week.week}</span>
-            <span className="text-xs text-muted">
-              {fmtShort.format(start)} – {fmtShort.format(end)}
-            </span>
-          </div>
-          <ul className="mt-3 flex flex-col gap-1">
-            {week.readings.map((r, i) => {
-              const key = readingKey(week.week, i)
-              const checked = key in done
-              return (
-                <li key={key}>
-                  <button
-                    onClick={() => actions.togglePlanReading(year, key, r)}
-                    className="flex w-full items-center gap-3 rounded-lg px-1 py-1.5 text-left text-sm hover:bg-surface"
-                  >
-                    <Checkbox checked={checked} />
-                    <span className={checked ? 'text-muted line-through decoration-faint' : ''}>{readingLabel(r)}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
+
+      <p className={`font-display text-2xl font-medium tracking-tight ${checked ? 'text-muted' : ''}`}>{label}</p>
+      <p className="mt-1 text-sm text-muted">
+        <span className="num">{readingsChapters(today.readings)}</span> capítulos · plan de 52 semanas
+      </p>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button variant={checked ? 'outline' : 'solid'} onClick={() => actions.togglePlanDay(year, key, today.readings)}>
+          <Check size={16} /> {checked ? 'Leído' : 'Marcar leído'}
+        </Button>
+        <Button variant="ghost" onClick={() => openReading({ kind: 'day', label, year, key, readings: today.readings })}>
+          <ExternalLink size={16} /> Leer
+        </Button>
       </div>
+
+      <div className="mt-6 flex gap-1.5">
+        {weekDays(year, today.week).map((d) => {
+          const k = dayKey(d.week, d.day)
+          const isDone = k in done
+          const isToday = dateKey(d.date) === todayKey
+          return (
+            <button
+              key={k}
+              onClick={() => actions.togglePlanDay(year, k, d.readings)}
+              title={readingsLabel(d.readings)}
+              className="flex flex-1 flex-col items-center gap-1.5"
+            >
+              <span className={`text-[10px] uppercase ${isToday ? 'font-medium text-accent' : 'text-faint'}`}>
+                {fmtWeekday.format(d.date)}
+              </span>
+              <span
+                className={`grid h-7 w-full max-w-9 place-items-center rounded-lg transition-colors ${
+                  isDone ? 'bg-accent text-on-accent' : 'bg-sunken'
+                } ${isToday ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface' : ''}`}
+              >
+                {isDone && <Check size={13} strokeWidth={3} />}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-4 text-xs text-muted">
+        <span className="num text-ink">{plan.daysDone}</span> de {plan.totalDays} días del plan {year}
+        {plan.behind > 0 ? ` · ${plan.behind} días pendientes, sin presión` : ' · vas al día'}
+      </p>
     </Card>
   )
 }

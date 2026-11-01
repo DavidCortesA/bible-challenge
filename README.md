@@ -1,30 +1,26 @@
 # Bible Challenge · Mi lectura bíblica
 
-Dashboard personal para llevar el progreso de lectura de la Biblia.
+Dashboard personal para llevar el progreso de lectura de la Biblia. Pensado para el celular: se instala como app y funciona sin internet.
 
-- **Biblia**: marca capítulo por capítulo (o un libro completo, o un rango) los 1,189 capítulos de los 66 libros. Es tu progreso total, no se reinicia.
-- **Plan de 52 semanas**: plan anual que empieza de cero cada año (cada año guarda sus propias marcas). Opcionalmente puede marcar también los capítulos en tu progreso de la Biblia.
-- **Inicio**: porcentaje total, Antiguo/Nuevo Testamento, avance por sección, racha de días, actividad y la siguiente lectura sugerida.
+- **Inicio**: la lectura de hoy del plan, el siguiente capítulo, porcentaje total, Antiguo/Nuevo Testamento, tu meta, avance por sección, racha y actividad.
+- **Biblia**: marca capítulo por capítulo (o un libro completo, o un rango) los 1,189 capítulos. Es tu progreso total, no se reinicia.
+- **Plan anual**: plan de 52 semanas dividido en lecturas diarias. Empieza de cero cada año (cada año guarda sus marcas). Opcionalmente marca también los capítulos en tu progreso de la Biblia.
+- **Historial**: capítulos por mes, días leyendo, mejor racha y libros terminados en cada año.
+- **Ajustes**: tema, instalar en el celular, recordatorio diario para tu calendario (.ics, con la lectura del plan de cada día) y respaldo en JSON.
 
-Entras con una contraseña y tu progreso se guarda en Vercel Blob (un archivo JSON privado), así que se ve igual en cualquier dispositivo. Cada cambio se guarda solo y, al volver a la app, trae lo último de los otros dispositivos (gana la edición más reciente). También hay una copia local y respaldo en JSON desde **Ajustes**.
+Al tocar **Leer** se abre el pasaje en bible.com (RVR1960); al volver, la app pregunta si lo terminaste para marcarlo.
+
+Los datos se guardan en el dispositivo (`localStorage`). Descarga un respaldo de vez en cuando desde **Ajustes**.
 
 ## Desarrollo
 
 ```bash
-cp .env.example .env.local   # y pon tu APP_PASSWORD
 npm install
 npm run dev
 ```
 
-En local, `/api` funciona con una base de datos en memoria (se borra al reiniciar el servidor), salvo que pongas `BLOB_READ_WRITE_TOKEN` en `.env.local`.
-
 ## Deploy en Vercel
 
-1. Importa el repositorio en Vercel (detecta Vite solo).
-2. En el proyecto: **Storage → Create → Blob** (elige acceso **Private**) y conéctalo al proyecto. Esto agrega `BLOB_READ_WRITE_TOKEN`.
-3. En **Settings → Environment Variables** agrega `APP_PASSWORD` con tu contraseña.
-4. Vuelve a desplegar (**Deployments → Redeploy**).
-
-Si cambias `APP_PASSWORD`, se cierra la sesión en todos los dispositivos.
+Importa el repositorio en Vercel; detecta Vite automáticamente (`npm run build`, salida en `dist`). No necesita variables de entorno.
 
 Hecho con React, Vite, Tailwind CSS y [Lucide](https://lucide.dev).
